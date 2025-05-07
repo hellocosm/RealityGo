@@ -4,7 +4,9 @@
 ## 使用方法
 
 
+```
 bash <(curl -sL 'https://raw.githubusercontent.com/ypq123456789/RealityGo/refs/heads/main/RealityGo.sh')
+```
 
 ## 主要功能
 
