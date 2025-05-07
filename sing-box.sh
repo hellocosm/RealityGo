@@ -68,10 +68,10 @@ generate_config() {
     cd ${SING_BOX_PATH}
     # 生成UUID
     UUID=$(./sing-box generate uuid)
-    # 生成Reality密钥对
+    # 生成Reality密钥对（修复换行问题）
     KEYS=$(./sing-box generate reality-keypair)
-    PRIKEY=$(echo "$KEYS" | awk '{print $2}')
-    PBK=$(echo "$KEYS" | awk '{print $4}')
+    PRIKEY=$(echo "$KEYS" | grep PrivateKey | awk '{print $2}')
+    PBK=$(echo "$KEYS" | grep PublicKey | awk '{print $2}')
     # 生成ShortID
     SHORTID=$(openssl rand -hex 8)
     # 默认端口和SNI
@@ -81,7 +81,8 @@ generate_config() {
     cat > config.json <<EOF
 {
   "log": {
-    "disabled": true
+    "level": "debug",
+    "timestamp": true
   },
   "inbounds": [
     {
@@ -116,7 +117,7 @@ generate_config() {
             "server_port": 443
           },
           "private_key": "${PRIKEY}",
-          "short_id": ["${SHORTID}",""]
+          "short_id": ["${SHORTID}"]
         }
       }
     }
@@ -132,7 +133,7 @@ generate_config() {
 EOF
 
     # 生成分享链接
-    SHARE_LINK="Reality: vless://${UUID}@${IP}:${PORT}?security=reality&encryption=none&pbk=${PBK}&headerType=none&fp=chrome&spx=%2F&serviceName=grpc&type=tcp&sni=${SNI}&sid=${SHORTID}&flow=xtls-rprx-vision#Reality"
+    SHARE_LINK="Reality: vless://${UUID}@${IP}:${PORT}?security=reality&encryption=none&pbk=${PBK}&headerType=none&fp=chrome&type=tcp&sni=${SNI}&sid=${SHORTID}&flow=xtls-rprx-vision#Reality"
 }
 
 # 安装 systemd 服务
