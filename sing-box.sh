@@ -5,7 +5,7 @@ SERVICE_FILE_PATH='/etc/systemd/system/sing-box.service'
 SHARE_LINKS=""
 NODE_NAME=""
 # 设置 sing-box 的监听端口。注意：如果设置为 443，请确保服务器上没有其他服务占用此端口。
-PORT=8443
+PORT=443
 SNI="global.fujifilm.com"
 
 # 检查 sing-box 是否在运行，若运行则停止
@@ -21,12 +21,20 @@ stop_singbox_if_running() {
 get_ip_info() {
     IPV4=$(curl -s4 ip.sb)
     IPV6=$(curl -s6 ip.sb)
-    # 查询国家
-    COUNTRY4=$(curl -s4 https://ipapi.co/country_name 2>/dev/null)
-    COUNTRY6=$(curl -s6 https://ipapi.co/country_name 2>/dev/null)
+    # 查询国家 (请求中文名称)
+    echo "正在获取 IPv4 对应的中文国家/地区名称..."
+    COUNTRY4=$(curl -s4 https://ipapi.co/country_name?lang=zh 2>/dev/null)
+    echo "正在获取 IPv6 对应的中文国家/地区名称..."
+    COUNTRY6=$(curl -s6 https://ipapi.co/country_name?lang=zh 2>/dev/null)
+
+    # 清理可能存在的引号
+    COUNTRY4=$(echo "$COUNTRY4" | tr -d '"')
+    COUNTRY6=$(echo "$COUNTRY6" | tr -d '"')
+
     # 默认国家名
     [ -z "$COUNTRY4" ] && COUNTRY4="未知"
     [ -z "$COUNTRY6" ] && COUNTRY6="未知"
+    echo "IPv4 国家/地区: $COUNTRY4, IPv6 国家/地区: $COUNTRY6"
 }
 
 # 检查双栈
@@ -65,19 +73,21 @@ arch_check() {
 
 # 安装依赖
 install_base() {
+    echo "正在安装依赖..."
     case $OS_RELEASE in
         debian|ubuntu)
-            apt update
-            apt install -y wget tar jq openssl curl
+            apt update -qq >/dev/null
+            apt install -y wget tar jq openssl curl -qq >/dev/null
             ;;
         centos)
-            yum install -y wget tar jq openssl curl
+            yum install -y wget tar jq openssl curl -q >/dev/null
             ;;
         alpine)
-            apk update
-            apk add wget tar jq openssl curl
+            apk update >/dev/null
+            apk add wget tar jq openssl curl >/dev/null
             ;;
     esac
+    echo "依赖安装完成。"
 }
 
 # 下载 sing-box
@@ -99,18 +109,19 @@ download_sing_box() {
     rm -f sing-box.tar.gz
     mv sing-box-${version_num}-linux-${OS_ARCH}/* .
     rm -rf sing-box-${version_num}-linux-${OS_ARCH}
+    chmod +x sing-box
     echo "sing-box 下载并解压完成。"
 }
 
 # 生成 Reality 节点配置
 generate_reality_config() {
-    local listen_ip="$1" # 此参数在当前配置中未直接使用，listen硬编码为"::"
+    local listen_ip="$1" 
     local listen_port="$2"
     local uuid="$3"
     local prikey="$4"
     local shortid="$5"
     local sni="$6"
-    local node_name="$7" # 此参数也未在config.json内部使用
+    local node_name="$7"
 
     cat > ${SING_BOX_PATH}/config.json <<EOF
 {
@@ -148,7 +159,7 @@ generate_reality_config() {
           "enabled": true,
           "handshake": {
             "server": "${sni}",
-            "server_port": 443 # Reality握手连接SNI目标服务器的443端口
+            "server_port": 443
           },
           "private_key": "${prikey}",
           "short_id": ["${shortid}"]
@@ -176,10 +187,15 @@ gen_share_link() {
     local sni="$5"
     local shortid="$6"
     local node_name="$7"
-    # URL编码节点名称中的特殊字符，特别是'#'。 '#'本身不应该被编码，因为它分隔URI和片段。
-    # 但节点名称本身可能包含需要编码的字符。更安全的做法是确保节点名称不含特殊URI字符或对其进行编码。
-    # Bash中进行完全的URL编码比较复杂，这里假设节点名主要为字母数字和'-'。
-    local encoded_node_name=$(echo "$node_name" | sed 's| |%20|g' | sed 's|#|%23|g') # 简单处理空格和#
+    
+    # 对节点名称进行URL编码以确保链接的有效性
+    local encoded_node_name=""
+    if command -v jq > /dev/null; then
+        encoded_node_name=$(jq -nr --arg s "$node_name" '$s|@uri')
+    else
+        # 简易的URL编码，可能不完美处理所有特殊字符
+        encoded_node_name=$(echo "$node_name" | sed 's| |%20|g; s|#|%23|g; s|&|%26|g; s|?|%3F|g; s|+|%2B|g; s|/|%2F|g; s|%|%25|g')
+    fi
     echo "vless://${uuid}@${ip}:${port}?security=reality&encryption=none&pbk=${pbk}&headerType=none&fp=chrome&type=tcp&sni=${sni}&sid=${shortid}&flow=xtls-rprx-vision#${encoded_node_name}"
 }
 
@@ -232,7 +248,6 @@ LimitNOFILE=1000000
 WantedBy=multi-user.target
 EOF
         chmod +x $SERVICE_FILE_PATH
-        # Alpine 不使用 systemd.service.d
         if [[ "$OS_RELEASE" != "alpine" ]]; then
             mkdir -p /etc/systemd/system/sing-box.service.d
             echo -e "[Service]\nCPUSchedulingPolicy=rr\nCPUSchedulingPriority=99" > /etc/systemd/system/sing-box.service.d/priority.conf
@@ -244,6 +259,7 @@ EOF
 
 # 主流程
 main() {
+    echo "开始执行 sing-box Reality 节点安装脚本..."
     stop_singbox_if_running
     os_check
     arch_check
@@ -252,34 +268,33 @@ main() {
     check_stack
 
     cd ${SING_BOX_PATH}
-    # 生成 Reality 密钥对
-    echo "正在生成 Reality 密钥对..."
+    echo "正在生成 Reality 相关密钥和ID..."
     KEYS=$(./sing-box generate reality-keypair)
     if [ $? -ne 0 ] || [ -z "$KEYS" ]; then
-        echo "生成 Reality 密钥对失败。请确保 sing-box 可执行且工作正常。"
+        echo "错误：生成 Reality 密钥对失败。请确保 sing-box 可执行且工作正常。"
         exit 1
     fi
-    PRIKEY=$(echo "$KEYS" | grep 'PrivateKey' | awk '{print $2}') # 调整grep以精确匹配
-    PBK=$(echo "$KEYS" | grep 'PublicKey' | awk '{print $2}')    # 调整grep以精确匹配
+    PRIKEY=$(echo "$KEYS" | grep 'PrivateKey' | awk '{print $2}')
+    PBK=$(echo "$KEYS" | grep 'PublicKey' | awk '{print $2}')    
     
     if [ -z "$PRIKEY" ] || [ -z "$PBK" ]; then
-        echo "从输出中提取密钥失败。KEYS: $KEYS"
+        echo "错误：从输出中提取密钥失败。KEYS: $KEYS"
         exit 1
     fi
 
     UUID=$(./sing-box generate uuid)
     SHORTID=$(openssl rand -hex 8)
+    echo "密钥和ID生成完毕。"
 
     SHARE_LINKS=""
     local node_name_v4=""
     local node_name_v6=""
 
-    # 生成节点名和节点
+    echo "正在配置节点信息..."
     if [[ $HAS_IPV4 -eq 1 && $HAS_IPV6 -eq 1 ]]; then
-        # 双栈
         node_name_v4="${COUNTRY4}-Reality-v4"
         node_name_v6="${COUNTRY6}-Reality-v6"
-        generate_reality_config "::" $PORT $UUID $PRIKEY $SHORTID $SNI # 配置使用同一个，监听::
+        generate_reality_config "::" $PORT $UUID $PRIKEY $SHORTID $SNI
         SHARE_LINKS="$(gen_share_link $UUID $IPV4 $PORT $PBK $SNI $SHORTID "$node_name_v4")"
         SHARE_LINKS="${SHARE_LINKS}\n$(gen_share_link $UUID "[$IPV6]" $PORT $PBK $SNI $SHORTID "$node_name_v6")"
     elif [[ $HAS_IPV4 -eq 1 ]]; then
@@ -291,13 +306,13 @@ main() {
         generate_reality_config "::" $PORT $UUID $PRIKEY $SHORTID $SNI
         SHARE_LINKS="$(gen_share_link $UUID "[$IPV6]" $PORT $PBK $SNI $SHORTID "$node_name_v6")"
     else
-        echo "未检测到有效公网IP，退出。"
+        echo "错误：未检测到有效公网IP，退出。"
         exit 1
     fi
+    echo "节点信息配置完成。"
 
     install_systemd_service
 
-    # 启动服务
     echo "正在启动 sing-box 服务..."
     if [[ "$OS_RELEASE" == "alpine" ]]; then
         service sing-box restart
@@ -305,30 +320,44 @@ main() {
         systemctl restart sing-box
     fi
     
-    # 检查服务状态，可选
-    sleep 3 # 等待服务启动
+    sleep 3 
+    echo "检查 sing-box 服务状态..."
     if [[ "$OS_RELEASE" != "alpine" ]]; then
-        systemctl status sing-box --no-pager -l
+        if systemctl is-active --quiet sing-box; then
+            echo "sing-box 服务正在运行。"
+        else
+            echo "警告：sing-box 服务未能成功启动。请检查日志："
+            journalctl -u sing-box -n 50 --no-pager
+        fi
     else
-        service sing-box status
+        if service sing-box status --quiet; then
+            echo "sing-box 服务正在运行 (Alpine)。"
+        else
+            echo "警告：sing-box 服务未能成功启动 (Alpine)。请检查相关日志。"
+        fi
     fi
-
 
     echo -e "\n配置完成，节点分享链接如下：\n${SHARE_LINKS}\n"
     echo -e "${SHARE_LINKS}" > ${SING_BOX_PATH}/share.txt
 
-    # 优化TCP
     if sysctl -w net.ipv4.tcp_fastopen=3 > /dev/null 2>&1; then
       echo "TCP Fast Open 已尝试启用。"
     else
-      echo "警告：无法设置 TCP Fast Open。"
+      echo "提示：无法设置 TCP Fast Open (可能是权限或内核不支持)。"
     fi
 
-
-    echo -e "如需卸载只需要执行删除sing-box服务和 ${SING_BOX_PATH} 文件夹\n"
-    echo -e "sing-box 服务正在监听端口: ${PORT}"
+    echo -e "\n如需卸载只需要执行以下命令停止并禁用服务，然后删除 ${SING_BOX_PATH} 文件夹:"
+    if [[ "$OS_RELEASE" != "alpine" ]]; then
+      echo "sudo systemctl stop sing-box"
+      echo "sudo systemctl disable sing-box"
+    else
+      echo "sudo service sing-box stop"
+      echo "sudo rc-update delete sing-box default"
+    fi
+    echo "sudo rm -rf ${SING_BOX_PATH}"
+    echo -e "\n当前 sing-box 服务正在监听端口: ${PORT}"
     echo -e "Reality SNI 设置为: ${SNI}"
-    echo -e "Reality Handshake 将连接 ${SNI} 的 443 端口。"
+    echo -e "Reality Handshake 将连接 ${SNI} 的 443 端口。\n"
 }
 
 main
