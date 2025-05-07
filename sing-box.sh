@@ -4,7 +4,7 @@ SING_BOX_PATH="/etc/sing-box/"
 SERVICE_FILE_PATH='/etc/systemd/system/sing-box.service'
 SHARE_LINKS=""
 NODE_NAME=""
-PORT=8443
+PORT=443
 SNI="global.fujifilm.com"
 
 # 检查 sing-box 是否在运行，若运行则停止
