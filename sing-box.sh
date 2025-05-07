@@ -75,7 +75,7 @@ generate_config() {
     # 生成ShortID
     SHORTID=$(openssl rand -hex 8)
     # 默认端口和SNI
-    PORT=443
+    PORT=8443
     SNI="global.fujifilm.com"
 
     cat > config.json <<EOF
