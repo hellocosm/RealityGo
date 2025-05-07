@@ -1,6 +1,10 @@
 # Sing-Box Reality 自动配置脚本
 
 这是一个用于在 Linux 服务器上自动安装和配置 [Sing-Box](https://sing-box.sagernet.org/) 作为 Reality 代理服务器的 Bash 脚本。脚本会自动检测服务器信息，生成配置文件和分享链接，并设置 systemd (或 Alpine Linux 的 OpenRC) 服务。
+## 使用方法
+
+
+    bash <(curl -sL 'https://raw.githubusercontent.com/ypq123456789/VLESS-TCP-REALITY/refs/heads/main/sing-box.sh')
 
 ## 主要功能
 
@@ -41,27 +45,7 @@
 * `PORT`: Sing-Box Reality 服务监听的端口。默认为 `12121`。
 * `SNI`: Reality TLS 握手时使用的 Server Name Indication。默认为 `global.fujifilm.com`。**请确保此 SNI 对应的域名真实存在且可以从您的服务器访问其 443 端口。**
 
-## 使用方法
 
-1.  **下载脚本**:
-    ```bash
-    wget https://path/to/your/script.sh -O singbox_reality_installer.sh
-    ```
-    请将 `https://path/to/your/script.sh` 替换为脚本的实际下载链接。
-
-2.  **授予执行权限**:
-    ```bash
-    chmod +x singbox_reality_installer.sh
-    ```
-
-3.  **执行脚本**:
-    ```bash
-    sudo ./singbox_reality_installer.sh
-    ```
-    脚本需要 root 权限来安装软件、写入系统目录和管理服务。
-
-4.  **查看输出**:
-    脚本执行完毕后，会在控制台输出生成的分享链接。同时，分享链接也会保存在 `${SING_BOX_PATH}/share.txt` (默认为 `/etc/sing-box/share.txt`)。
 
 ## 注意事项
 
