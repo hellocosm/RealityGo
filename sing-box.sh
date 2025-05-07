@@ -46,8 +46,31 @@ get_ip_addresses() {
     if [[ $HAS_IPV6 -eq 1 ]]; then echo "  检测到 IPv6 地址: $IPV6"; fi
     if [[ $HAS_IPV4 -eq 0 && $HAS_IPV6 -eq 0 ]]; then
         echo "错误：未能获取到任何有效的公网IP地址。"
-        # exit 1 # Commented out to allow script to proceed if one IP type is missing but not fatal for all cases.
     fi
+}
+
+# 新增：本地翻译国家/地区名称到中文
+translate_country_name_to_chinese() {
+    local english_name="$1"
+    local chinese_name="$english_name" # 默认为原始名称
+
+    case "$english_name" in
+        "United States") chinese_name="美国" ;;
+        "Japan") chinese_name="日本" ;;
+        "Hong Kong") chinese_name="香港" ;;
+        "Singapore") chinese_name="新加坡" ;;
+        "Germany") chinese_name="德国" ;;
+        "United Kingdom") chinese_name="英国" ;;
+        "South Korea") chinese_name="韩国" ;;
+        "Canada") chinese_name="加拿大" ;;
+        "Australia") chinese_name="澳大利亚" ;;
+        "France") chinese_name="法国" ;;
+        "Netherlands") chinese_name="荷兰" ;;
+        "Taiwan") chinese_name="台湾" ;; # 根据实际需要和地区政策考虑是否添加
+        # 在这里添加更多你需要的翻译，格式为："英文名") chinese_name="中文名" ;;
+        *) chinese_name="$english_name" ;; # 如果没有匹配，则返回原始英文名
+    esac
+    echo "$chinese_name"
 }
 
 # 获取指定IP的详细信息 (国家/地区, 运营商)
@@ -73,15 +96,12 @@ fetch_ip_details() {
     echo "DEBUG: Raw response from ipapi.co for $ip_address: $response_ipapi"
 
     if [ -n "$response_ipapi" ] && command -v jq > /dev/null; then
-        # jq '.field // empty' will output 'empty' string if field is null, or actual value if present, or empty string if field does not exist.
-        # jq -r '.field // ""' is better to get empty string for null/missing.
         country_name_temp=$(echo "$response_ipapi" | jq -r '.country_name // ""')
         org_temp=$(echo "$response_ipapi" | jq -r '.org // ""')
         echo "DEBUG: Parsed from ipapi.co: country_name='${country_name_temp}', org='${org_temp}'"
     fi
 
-    # If ipapi.co failed or didn't yield a valid country name, try ip-api.com
-    if [[ -z "$response_ipapi" || -z "$country_name_temp" || "$country_name_temp" == "未知" ]]; then
+    if [[ -z "$response_ipapi" || -z "$country_name_temp" || "$country_name_temp" == "未知" || "$country_name_temp" == '""' ]]; then
         echo "DEBUG: ipapi.co failed or no valid country name. Querying ip-api.com for $ip_address (lang=zh-CN)..."
         if [[ "$ip_type" == "v4" ]]; then
             response_ip_api_com=$(curl -sL4m8 "http://ip-api.com/json/${ip_address}?lang=zh-CN&fields=status,message,country,org")
@@ -99,8 +119,7 @@ fetch_ip_details() {
                 if [[ -n "$country_from_ip_api_com" ]]; then
                      country_name_temp="$country_from_ip_api_com"
                 fi
-                # Update org if it was previously unknown or empty from ipapi.co, or if ip-api.com provides one.
-                if [[ (-z "$org_temp" || "$org_temp" == "未知") && -n "$org_from_ip_api_com" ]]; then
+                if [[ (-z "$org_temp" || "$org_temp" == "未知" || "$org_temp" == '""') && -n "$org_from_ip_api_com" ]]; then
                     org_temp="$org_from_ip_api_com"
                 fi
                 echo "DEBUG: Parsed from ip-api.com: country_name='${country_name_temp}', org='${org_temp}'"
@@ -110,21 +129,22 @@ fetch_ip_details() {
         fi
     fi
     
-    # Final cleanup and assignment
-    country_name_temp=$(echo "$country_name_temp" | tr -d '"') # Should not be needed if jq -r is used correctly
-    org_temp=$(echo "$org_temp" | tr -d '"')
-
     [ -z "$country_name_temp" ] && country_name_temp="未知"
     [ -z "$org_temp" ] && org_temp="未知"
 
+    # 调用本地翻译函数
+    local translated_country_name=$(translate_country_name_to_chinese "$country_name_temp")
+    echo "DEBUG: Original country name: '$country_name_temp', Translated country name: '$translated_country_name'"
+
+
     if [[ "$ip_type" == "v4" ]]; then
-        COUNTRY4_NAME="$country_name_temp"
+        COUNTRY4_NAME="$translated_country_name"
         ORG4="$org_temp"
     else
-        COUNTRY6_NAME="$country_name_temp"
+        COUNTRY6_NAME="$translated_country_name"
         ORG6="$org_temp"
     fi
-    echo "  IP ($ip_address) FINAL Details: 国家/地区='$country_name_temp', 运营商='$org_temp'"
+    echo "  IP ($ip_address) FINAL Details: 国家/地区='$translated_country_name', 运营商='$org_temp'"
 }
 
 # 获取服务器配置 (CPU核心数, 内存GB)
@@ -140,7 +160,7 @@ get_server_specs() {
         local mem_total_mb=$(free -m | awk '/^Mem:/{print $2}')
         if [ -n "$mem_total_mb" ] && [ "$mem_total_mb" -gt 0 ]; then
             if command -v bc > /dev/null; then
-                 ram_gb=$(printf "%.0f" $(echo "scale=0; $mem_total_mb / 1024" | bc)) # Using bc for rounding
+                 ram_gb=$(printf "%.0f" $(echo "scale=0; $mem_total_mb / 1024" | bc)) 
             else 
                  ram_gb=$((mem_total_mb / 1024)); [ "$ram_gb" -eq 0 ] && [ "$mem_total_mb" -gt 0 ] && ram_gb=1
             fi
@@ -155,7 +175,7 @@ get_server_specs() {
 # 根据运营商名称获取厂商代码
 get_vendor_code() {
     local org_name="$1"
-    local vendor_code="misc" # Default
+    local vendor_code="misc" 
 
     if [[ -z "$org_name" || "$org_name" == "未知" ]]; then
         echo "$vendor_code"
@@ -164,17 +184,12 @@ get_vendor_code() {
 
     local lower_org_name=$(echo "$org_name" | tr '[:upper:]' '[:lower:]')
 
-    # --- 用户自定义厂商代码映射 ---
-    # User wants "colocrossing" (or similar) from "AS-COLOCROSSING"
     if [[ "$lower_org_name" == "as-colocrossing" || "$lower_org_name" == "colocrossing" ]]; then
         vendor_code="colocrossing" 
         echo "$vendor_code"
         return
     fi
-    # 请在此处添加您自定义的厂商名称关键字到特定代码的映射
-    # 示例: if [[ "$lower_org_name" == *"your_keyword_for_yxvm"* ]]; then vendor_code="yxvm"; echo "$vendor_code"; return; fi
     
-    # --- 常见云服务商映射 ---
     if [[ "$lower_org_name" == *"alibaba"* || "$lower_org_name" == *"aliyun"* ]]; then vendor_code="ali"
     elif [[ "$lower_org_name" == *"google"* && ("$lower_org_name" == *"cloud"* || "$lower_org_name" == *"llc"*) ]]; then vendor_code="gcp"
     elif [[ "$lower_org_name" == *"amazon"* && ("$lower_org_name" == *"aws"* || "$lower_org_name" == *"data services"*) ]]; then vendor_code="aws"
@@ -190,15 +205,15 @@ get_vendor_code() {
     elif [[ "$lower_org_name" == *"m247"* ]]; then vendor_code="m247"
     elif [[ "$lower_org_name" == *"cogent"* ]]; then vendor_code="cogent"
     elif [[ "$lower_org_name" == *"cloudflare"* ]]; then vendor_code="cf"
-    else # Fallback for non-matched ORGs
-        if [[ "$lower_org_name" =~ ^as[0-9]+[[:space:]]*(.*) ]]; then # Starts with ASN
-            local potential_code=$(echo "${BASH_REMATCH[1]}" | sed 's/[^a-z0-9]//g' | cut -c1-12) # Longer cut for ASN text
+    else 
+        if [[ "$lower_org_name" =~ ^as[0-9]+[[:space:]]*(.*) ]]; then 
+            local potential_code=$(echo "${BASH_REMATCH[1]}" | sed 's/[^a-z0-9]//g' | cut -c1-12) 
             if [[ -n "$potential_code" ]]; then vendor_code="$potential_code"; else
                 vendor_code=$(echo "$lower_org_name" | sed -n 's/^\(as[0-9]\+\).*/\1/p' | sed 's/[^a-z0-9]//g' | cut -c1-10)
                 [ -z "$vendor_code" ] && vendor_code="misc"
             fi
         else
-            vendor_code=$(echo "$lower_org_name" | sed 's/[^a-z0-9]//g' | cut -c1-10) # General ORG name, up to 10 chars
+            vendor_code=$(echo "$lower_org_name" | sed 's/[^a-z0-9]//g' | cut -c1-10) 
             [ -z "$vendor_code" ] && vendor_code="misc"
         fi
     fi
@@ -235,7 +250,7 @@ install_base() {
             apt-get install -y $packages -qq >/dev/null
             ;;
         centos)
-            yum install -y epel-release -q >/dev/null # bc可能在epel
+            yum install -y epel-release -q >/dev/null 
             yum install -y $packages -q >/dev/null
             ;;
         alpine)
@@ -252,7 +267,7 @@ install_base() {
 # 下载 sing-box
 download_sing_box() {
     local latest_version=$(curl -s https://api.github.com/repos/SagerNet/sing-box/releases/latest | grep 'tag_name' | head -1 | awk -F '"' '{print $4}')
-    [ -z "$latest_version" ] && latest_version="v1.9.0" # Fallback version
+    [ -z "$latest_version" ] && latest_version="v1.9.0" 
     local version_num=${latest_version#v}
     local url="https://github.com/SagerNet/sing-box/releases/download/${latest_version}/sing-box-${version_num}-linux-${OS_ARCH}.tar.gz"
 
@@ -337,7 +352,7 @@ gen_share_link() {
     local encoded_node_name=""
     if command -v jq > /dev/null; then
         encoded_node_name=$(jq -nr --arg s "$node_name" '$s|@uri')
-    else # Fallback basic encoding
+    else 
         encoded_node_name=$(echo "$node_name" | sed 's| |%20|g; s|#|%23|g; s|&|%26|g; s|?|%3F|g; s|+|%2B|g; s|/|%2F|g; s|%|%25|g')
     fi
     echo "vless://${uuid}@${ip}:${port}?security=reality&encryption=none&pbk=${pbk}&headerType=none&fp=chrome&type=tcp&sni=${sni}&sid=${shortid}&flow=xtls-rprx-vision#${encoded_node_name}"
@@ -355,9 +370,9 @@ name="sing-box"
 description="Sing-Box Service"
 supervisor="supervise-daemon"
 command="${SING_BOX_PATH}sing-box"
-command_args="run -c ${SING_BOX_PATH}config.json" # Corrected command_args for sing-box
+command_args="run -c ${SING_BOX_PATH}config.json" 
 command_user="root:root"
-pidfile="/run/\${RC_SVCNAME}.pid" # Standard pidfile location
+pidfile="/run/\${RC_SVCNAME}.pid" 
 
 depend() { 
   after net dns
@@ -366,7 +381,7 @@ depend() {
 EOF
         chmod +x "$SERVICE_FILE_PATH"
         rc-update add sing-box default
-    else # For systemd
+    else 
         if [[ -f "$SERVICE_FILE_PATH" ]]; then rm -f "$SERVICE_FILE_PATH"; fi
         cat > "$SERVICE_FILE_PATH" <<EOF
 [Unit]
@@ -388,7 +403,7 @@ LimitNOFILE=1000000
 WantedBy=multi-user.target
 EOF
         chmod +x "$SERVICE_FILE_PATH"
-        # Drop-in for priority (only for systemd)
+        
         mkdir -p /etc/systemd/system/sing-box.service.d
         echo -e "[Service]\nCPUSchedulingPolicy=rr\nCPUSchedulingPriority=99" > /etc/systemd/system/sing-box.service.d/priority.conf
         
@@ -419,8 +434,8 @@ main() {
     
     KEYS=$(./sing-box generate reality-keypair)
     if [ $? -ne 0 ] || [ -z "$KEYS" ]; then echo "错误：生成 Reality 密钥对失败。" && exit 1; fi
-    PRIKEY=$(echo "$KEYS" | grep 'PrivateKey:' | awk '{print $2}') # Adjusted grep
-    PBK=$(echo "$KEYS" | grep 'PublicKey:' | awk '{print $2}')    # Adjusted grep
+    PRIKEY=$(echo "$KEYS" | grep 'PrivateKey:' | awk '{print $2}') 
+    PBK=$(echo "$KEYS" | grep 'PublicKey:' | awk '{print $2}')    
     if [ -z "$PRIKEY" ] || [ -z "$PBK" ]; then echo "错误：从输出中提取密钥失败。KEYS: $KEYS" && exit 1; fi
     
     UUID=$(./sing-box generate uuid)
@@ -436,8 +451,8 @@ main() {
         vendor_code_final=$(get_vendor_code "$ORG4")
     elif [[ $HAS_IPV6 -eq 1 && "$ORG6" != "未知" ]]; then
         vendor_code_final=$(get_vendor_code "$ORG6")
-    elif [[ $HAS_IPV4 -eq 1 ]]; then # Fallback if ORG is unknown but IP exists
-        vendor_code_final=$(get_vendor_code "$ORG4") # Will likely result in "misc" or ASN based
+    elif [[ $HAS_IPV4 -eq 1 ]]; then 
+        vendor_code_final=$(get_vendor_code "$ORG4") 
     elif [[ $HAS_IPV6 -eq 1 ]]; then
         vendor_code_final=$(get_vendor_code "$ORG6")
     fi
@@ -450,10 +465,7 @@ main() {
         SHARE_LINKS+="$(gen_share_link "$UUID" "$IPV4" "$PORT" "$PBK" "$SNI" "$SHORTID" "$node_name_v4")\n"
     fi
     if [[ $HAS_IPV6 -eq 1 ]]; then
-        # Determine vendor code for IPv6 separately if needed, or use the common one.
-        # local vendor_code_for_v6_node=$(get_vendor_code "$ORG6")
-        # node_name_v6="${COUNTRY6_NAME}-${SERVER_SPECS}-Reality-v6-${vendor_code_for_v6_node}"
-        node_name_v6="${COUNTRY6_NAME}-${SERVER_SPECS}-Reality-v6-${vendor_code_final}" # Using common for simplicity
+        node_name_v6="${COUNTRY6_NAME}-${SERVER_SPECS}-Reality-v6-${vendor_code_final}" 
         SHARE_LINKS+="$(gen_share_link "$UUID" "[$IPV6]" "$PORT" "$PBK" "$SNI" "$SHORTID" "$node_name_v6")\n"
     fi
     SHARE_LINKS=$(echo -e "$SHARE_LINKS" | sed '/^$/d') 
