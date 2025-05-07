@@ -4,7 +4,7 @@
 ## 使用方法
 
 
-    bash <(curl -sL 'https://raw.githubusercontent.com/ypq123456789/VLESS-TCP-REALITY/refs/heads/main/sing-box.sh')
+bash <(curl -sL 'https://raw.githubusercontent.com/ypq123456789/RealityGo/refs/heads/main/RealityGo.sh')
 
 ## 主要功能
 
