@@ -114,7 +114,7 @@ generate_config() {
           "enabled": true,
           "handshake": {
             "server": "${SNI}",
-            "server_port": 443
+            "server_port": 8443
           },
           "private_key": "${PRIKEY}",
           "short_id": ["${SHORTID}"]
