@@ -16,7 +16,7 @@ ORG4="未知"
 ORG6="未知"
 HAS_IPV4=0
 HAS_IPV6=0
-SERVER_SPECS="未知配置"
+SERVER_SPECS="未知配置" # This variable is kept for other potential uses or logging if needed
 
 # 检查 sing-box 是否在运行，若运行则停止
 stop_singbox_if_running() {
@@ -25,7 +25,7 @@ stop_singbox_if_running() {
         if systemctl stop sing-box; then
             echo "sing-box 服务已通过 systemctl 停止。"
         elif service sing-box stop; then
-             echo "sing-box 服务已通过 service 停止。"
+            echo "sing-box 服务已通过 service 停止。"
         else
             echo "尝试停止 sing-box 服务失败，可能需要手动干预。"
         fi
@@ -115,9 +115,9 @@ fetch_ip_details() {
             if [[ "$status_ip_api_com" == "success" ]]; then
                 local country_from_ip_api_com=$(echo "$response_ip_api_com" | jq -r '.country // ""')
                 local org_from_ip_api_com=$(echo "$response_ip_api_com" | jq -r '.org // ""')
-                
+
                 if [[ -n "$country_from_ip_api_com" ]]; then
-                     country_name_temp="$country_from_ip_api_com"
+                    country_name_temp="$country_from_ip_api_com"
                 fi
                 if [[ (-z "$org_temp" || "$org_temp" == "未知" || "$org_temp" == '""') && -n "$org_from_ip_api_com" ]]; then
                     org_temp="$org_from_ip_api_com"
@@ -128,7 +128,7 @@ fetch_ip_details() {
             fi
         fi
     fi
-    
+
     [ -z "$country_name_temp" ] && country_name_temp="未知"
     [ -z "$org_temp" ] && org_temp="未知"
 
@@ -147,7 +147,7 @@ fetch_ip_details() {
     echo "  IP ($ip_address) FINAL Details: 国家/地区='$translated_country_name', 运营商='$org_temp'"
 }
 
-# 获取服务器配置 (CPU核心数, 内存GB)
+# 获取服务器配置 (CPU核心数, 内存GB) - kept for potential other uses
 get_server_specs() {
     echo "正在获取服务器硬件配置..."
     local cores=""
@@ -160,22 +160,22 @@ get_server_specs() {
         local mem_total_mb=$(free -m | awk '/^Mem:/{print $2}')
         if [ -n "$mem_total_mb" ] && [ "$mem_total_mb" -gt 0 ]; then
             if command -v bc > /dev/null; then
-                 ram_gb=$(printf "%.0f" $(echo "scale=0; $mem_total_mb / 1024" | bc)) 
-            else 
-                 ram_gb=$((mem_total_mb / 1024)); [ "$ram_gb" -eq 0 ] && [ "$mem_total_mb" -gt 0 ] && ram_gb=1
+                ram_gb=$(printf "%.0f" $(echo "scale=0; $mem_total_mb / 1024" | bc))
+            else
+                ram_gb=$((mem_total_mb / 1024)); [ "$ram_gb" -eq 0 ] && [ "$mem_total_mb" -gt 0 ] && ram_gb=1
             fi
         fi
     fi
     [ -z "$ram_gb" ] && ram_gb="?"
-    
-    SERVER_SPECS="${cores}H${ram_gb}G"
-    echo "  服务器配置: $SERVER_SPECS"
+
+    SERVER_SPECS="${cores}H${ram_gb}G" # This is set but won't be used in share link name
+    echo "  服务器配置: $SERVER_SPECS (此信息将不包含在节点名称中)"
 }
 
 # 根据运营商名称获取厂商代码
 get_vendor_code() {
     local org_name="$1"
-    local vendor_code="misc" 
+    local vendor_code="misc"
 
     if [[ -z "$org_name" || "$org_name" == "未知" ]]; then
         echo "$vendor_code"
@@ -185,11 +185,11 @@ get_vendor_code() {
     local lower_org_name=$(echo "$org_name" | tr '[:upper:]' '[:lower:]')
 
     if [[ "$lower_org_name" == "as-colocrossing" || "$lower_org_name" == "colocrossing" ]]; then
-        vendor_code="colocrossing" 
+        vendor_code="colocrossing"
         echo "$vendor_code"
         return
     fi
-    
+
     if [[ "$lower_org_name" == *"alibaba"* || "$lower_org_name" == *"aliyun"* ]]; then vendor_code="ali"
     elif [[ "$lower_org_name" == *"google"* && ("$lower_org_name" == *"cloud"* || "$lower_org_name" == *"llc"*) ]]; then vendor_code="gcp"
     elif [[ "$lower_org_name" == *"amazon"* && ("$lower_org_name" == *"aws"* || "$lower_org_name" == *"data services"*) ]]; then vendor_code="aws"
@@ -205,19 +205,19 @@ get_vendor_code() {
     elif [[ "$lower_org_name" == *"m247"* ]]; then vendor_code="m247"
     elif [[ "$lower_org_name" == *"cogent"* ]]; then vendor_code="cogent"
     elif [[ "$lower_org_name" == *"cloudflare"* ]]; then vendor_code="cf"
-    else 
-        if [[ "$lower_org_name" =~ ^as[0-9]+[[:space:]]*(.*) ]]; then 
-            local potential_code=$(echo "${BASH_REMATCH[1]}" | sed 's/[^a-z0-9]//g' | cut -c1-12) 
+    else
+        if [[ "$lower_org_name" =~ ^as[0-9]+[[:space:]]*(.*) ]]; then
+            local potential_code=$(echo "${BASH_REMATCH[1]}" | sed 's/[^a-z0-9]//g' | cut -c1-12)
             if [[ -n "$potential_code" ]]; then vendor_code="$potential_code"; else
                 vendor_code=$(echo "$lower_org_name" | sed -n 's/^\(as[0-9]\+\).*/\1/p' | sed 's/[^a-z0-9]//g' | cut -c1-10)
                 [ -z "$vendor_code" ] && vendor_code="misc"
             fi
         else
-            vendor_code=$(echo "$lower_org_name" | sed 's/[^a-z0-9]//g' | cut -c1-10) 
+            vendor_code=$(echo "$lower_org_name" | sed 's/[^a-z0-9]//g' | cut -c1-10)
             [ -z "$vendor_code" ] && vendor_code="misc"
         fi
     fi
-    
+
     echo "$vendor_code"
 }
 
@@ -244,18 +244,26 @@ arch_check() {
 install_base() {
     echo "正在安装依赖 (wget, tar, jq, openssl, curl, bc)..."
     local packages="wget tar jq openssl curl bc"
+    # Add firewall clients to packages if they are not typically pre-installed
+    if [[ "$OS_RELEASE" == "debian" || "$OS_RELEASE" == "ubuntu" ]]; then
+        packages="$packages ufw firewalld" # Add both, script will check which one is active
+    elif [[ "$OS_RELEASE" == "centos" ]]; then
+        packages="$packages firewalld" # ufw is less common on CentOS
+    fi
+
+
     case $OS_RELEASE in
         debian|ubuntu)
             apt-get update -qq >/dev/null
             apt-get install -y $packages -qq >/dev/null
             ;;
         centos)
-            yum install -y epel-release -q >/dev/null 
+            yum install -y epel-release -q >/dev/null
             yum install -y $packages -q >/dev/null
             ;;
         alpine)
             apk update >/dev/null
-            apk add $packages >/dev/null
+            apk add $packages >/dev/null # firewalld/ufw might not be in standard alpine repos
             ;;
     esac
     if ! command -v jq > /dev/null; then
@@ -267,7 +275,7 @@ install_base() {
 # 下载 sing-box
 download_sing_box() {
     local latest_version=$(curl -s https://api.github.com/repos/SagerNet/sing-box/releases/latest | grep 'tag_name' | head -1 | awk -F '"' '{print $4}')
-    [ -z "$latest_version" ] && latest_version="v1.9.0" 
+    [ -z "$latest_version" ] && latest_version="v1.9.0"
     local version_num=${latest_version#v}
     local url="https://github.com/SagerNet/sing-box/releases/download/${latest_version}/sing-box-${version_num}-linux-${OS_ARCH}.tar.gz"
 
@@ -285,7 +293,7 @@ download_sing_box() {
 
 # 生成 Reality 节点配置
 generate_reality_config() {
-    local listen_port="$1" 
+    local listen_port="$1"
     local uuid="$2"
     local prikey="$3"
     local shortid="$4"
@@ -294,7 +302,7 @@ generate_reality_config() {
     cat > "${SING_BOX_PATH}/config.json" <<EOF
 {
   "log": {
-    "level": "info", 
+    "level": "info",
     "timestamp": true
   },
   "inbounds": [
@@ -304,32 +312,32 @@ generate_reality_config() {
       "listen": "::",
       "listen_port": ${listen_port},
       "multiplex": {
-        "enabled": true, 
-        "padding": true, 
+        "enabled": true,
+        "padding": true,
         "brutal": {
-          "enabled": true, 
-          "up_mbps": 1000, 
+          "enabled": true,
+          "up_mbps": 1000,
           "down_mbps": 1000
         }
       },
       "tcp_multi_path": true,
       "users": [
         {
-          "uuid": "${uuid}", 
+          "uuid": "${uuid}",
           "flow": "xtls-rprx-vision"
         }
       ],
       "tls": {
-        "enabled": true, 
-        "server_name": "${sni}", 
+        "enabled": true,
+        "server_name": "${sni}",
         "alpn": ["h2","http/1.1"],
         "reality": {
           "enabled": true,
           "handshake": {
-            "server": "${sni}", 
+            "server": "${sni}",
             "server_port": 443
           },
-          "private_key": "${prikey}", 
+          "private_key": "${prikey}",
           "short_id": ["${shortid}"]
         }
       }
@@ -337,8 +345,8 @@ generate_reality_config() {
   ],
   "outbounds": [
     {
-      "type": "direct", 
-      "tag": "direct", 
+      "type": "direct",
+      "tag": "direct",
       "domain_strategy": "prefer_ipv4"
     }
   ]
@@ -352,7 +360,7 @@ gen_share_link() {
     local encoded_node_name=""
     if command -v jq > /dev/null; then
         encoded_node_name=$(jq -nr --arg s "$node_name" '$s|@uri')
-    else 
+    else
         encoded_node_name=$(echo "$node_name" | sed 's| |%20|g; s|#|%23|g; s|&|%26|g; s|?|%3F|g; s|+|%2B|g; s|/|%2F|g; s|%|%25|g')
     fi
     echo "vless://${uuid}@${ip}:${port}?security=reality&encryption=none&pbk=${pbk}&headerType=none&fp=chrome&type=tcp&sni=${sni}&sid=${shortid}&flow=xtls-rprx-vision#${encoded_node_name}"
@@ -361,7 +369,7 @@ gen_share_link() {
 # 安装 systemd 服务
 install_systemd_service() {
     echo "正在安装/更新 systemd 服务..."
-    if [[ "$OS_RELEASE" == "alpine" ]]; then 
+    if [[ "$OS_RELEASE" == "alpine" ]]; then
         SERVICE_FILE_PATH="/etc/init.d/sing-box"
         if [[ -f "$SERVICE_FILE_PATH" ]]; then rm -f "$SERVICE_FILE_PATH"; fi
         cat > "$SERVICE_FILE_PATH" <<EOF
@@ -370,18 +378,18 @@ name="sing-box"
 description="Sing-Box Service"
 supervisor="supervise-daemon"
 command="${SING_BOX_PATH}sing-box"
-command_args="run -c ${SING_BOX_PATH}config.json" 
+command_args="run -c ${SING_BOX_PATH}config.json"
 command_user="root:root"
-pidfile="/run/\${RC_SVCNAME}.pid" 
+pidfile="/run/\${RC_SVCNAME}.pid"
 
-depend() { 
+depend() {
   after net dns
   use net
 }
 EOF
         chmod +x "$SERVICE_FILE_PATH"
         rc-update add sing-box default
-    else 
+    else
         if [[ -f "$SERVICE_FILE_PATH" ]]; then rm -f "$SERVICE_FILE_PATH"; fi
         cat > "$SERVICE_FILE_PATH" <<EOF
 [Unit]
@@ -403,41 +411,85 @@ LimitNOFILE=1000000
 WantedBy=multi-user.target
 EOF
         chmod +x "$SERVICE_FILE_PATH"
-        
+
         mkdir -p /etc/systemd/system/sing-box.service.d
         echo -e "[Service]\nCPUSchedulingPolicy=rr\nCPUSchedulingPriority=99" > /etc/systemd/system/sing-box.service.d/priority.conf
-        
+
         systemctl daemon-reload
         systemctl enable sing-box
     fi
     echo "systemd 服务安装/更新完成。"
 }
 
+# 新增: 配置防火墙
+configure_firewall() {
+    echo "正在配置防火墙以允许端口 ${PORT}..."
+    local port_to_open="$1"
+
+    if command -v ufw > /dev/null; then
+        if ufw status | grep -qw active; then
+            echo "检测到 ufw 活动状态，正在尝试开放端口 ${port_to_open}/tcp..."
+            if ufw allow "${port_to_open}/tcp"; then
+                echo "ufw: 端口 ${port_to_open}/tcp 已开放。"
+                # ufw reload # Reload might be disruptive, allow is usually immediate for new rules
+            else
+                echo "ufw: 开放端口 ${port_to_open}/tcp 失败。请手动检查。"
+            fi
+        else
+            echo "ufw 未激活或未正确配置。"
+        fi
+    elif command -v firewall-cmd > /dev/null; then
+        if systemctl is-active --quiet firewalld; then
+            echo "检测到 firewalld 活动状态，正在尝试开放端口 ${port_to_open}/tcp..."
+            if firewall-cmd --permanent --add-port="${port_to_open}/tcp" && firewall-cmd --reload; then
+                echo "firewalld: 端口 ${port_to_open}/tcp 已永久开放并重载防火墙。"
+            else
+                echo "firewalld: 开放端口 ${port_to_open}/tcp 失败。请手动检查。"
+            fi
+        else
+            echo "firewalld 服务未运行。"
+        fi
+    elif [[ "$OS_RELEASE" == "alpine" ]]; then
+        # Alpine typically uses iptables directly or through other frontends not checked here.
+        # OpenRC init scripts might manage iptables rules.
+        echo "Alpine Linux: 请确保你的防火墙 (如 iptables 或 nftables) 允许端口 ${port_to_open}/tcp。"
+        echo "你可以尝试使用类似命令: "
+        echo "  sudo iptables -I INPUT -p tcp --dport ${port_to_open} -j ACCEPT"
+        echo "  sudo ip6tables -I INPUT -p tcp --dport ${port_to_open} -j ACCEPT"
+        echo "  并确保规则已持久化。"
+    else
+        echo "未检测到 ufw 或 firewalld。请手动配置防火墙以允许端口 ${port_to_open}/tcp。"
+    fi
+}
+
+
 # --- 主流程 ---
 main() {
-    echo "开始执行 sing-box Reality 节点安装脚本 (版本包含厂商和配置)..."
+    echo "开始执行 sing-box Reality 节点安装脚本 (版本包含厂商, 不含配置)..."
     stop_singbox_if_running
     os_check
     arch_check
-    install_base 
-    
-    get_ip_addresses 
+    install_base
+
+    get_ip_addresses
     if [[ $HAS_IPV4 -eq 1 ]]; then fetch_ip_details "$IPV4" "v4"; fi
     if [[ $HAS_IPV6 -eq 1 ]]; then fetch_ip_details "$IPV6" "v6"; fi
-    get_server_specs 
+    # get_server_specs is called to set SERVER_SPECS, but it's not used in the node name below.
+    # If you absolutely don't need SERVER_SPECS for anything else, you could comment out the next line.
+    get_server_specs # SERVER_SPECS will be set but not used in node_name
 
-    download_sing_box 
-    
+    download_sing_box
+
     cd "${SING_BOX_PATH}" || { echo "错误: 无法进入 ${SING_BOX_PATH}"; exit 1; }
     echo "正在生成 Reality 相关密钥和ID..."
     if [[ ! -x "sing-box" ]]; then echo "错误: ${SING_BOX_PATH}sing-box 不存在或不可执行。" && exit 1; fi
-    
+
     KEYS=$(./sing-box generate reality-keypair)
     if [ $? -ne 0 ] || [ -z "$KEYS" ]; then echo "错误：生成 Reality 密钥对失败。" && exit 1; fi
-    PRIKEY=$(echo "$KEYS" | grep 'PrivateKey:' | awk '{print $2}') 
-    PBK=$(echo "$KEYS" | grep 'PublicKey:' | awk '{print $2}')    
+    PRIKEY=$(echo "$KEYS" | grep 'PrivateKey:' | awk '{print $2}')
+    PBK=$(echo "$KEYS" | grep 'PublicKey:' | awk '{print $2}')
     if [ -z "$PRIKEY" ] || [ -z "$PBK" ]; then echo "错误：从输出中提取密钥失败。KEYS: $KEYS" && exit 1; fi
-    
+
     UUID=$(./sing-box generate uuid)
     SHORTID=$(openssl rand -hex 8)
     echo "密钥和ID生成完毕。"
@@ -445,42 +497,52 @@ main() {
     SHARE_LINKS=""
     local node_name_v4=""
     local node_name_v6=""
-    local vendor_code_final="unknown" 
+    local vendor_code_final="unknown"
 
     if [[ $HAS_IPV4 -eq 1 && "$ORG4" != "未知" ]]; then
         vendor_code_final=$(get_vendor_code "$ORG4")
     elif [[ $HAS_IPV6 -eq 1 && "$ORG6" != "未知" ]]; then
         vendor_code_final=$(get_vendor_code "$ORG6")
-    elif [[ $HAS_IPV4 -eq 1 ]]; then 
-        vendor_code_final=$(get_vendor_code "$ORG4") 
+    elif [[ $HAS_IPV4 -eq 1 ]]; then
+        vendor_code_final=$(get_vendor_code "$ORG4") # Fallback if ORG4 is "未知" but IP exists
     elif [[ $HAS_IPV6 -eq 1 ]]; then
-        vendor_code_final=$(get_vendor_code "$ORG6")
+        vendor_code_final=$(get_vendor_code "$ORG6") # Fallback if ORG6 is "未知" but IP exists
     fi
 
     echo "正在配置节点信息 (使用厂商代码: $vendor_code_final)..."
     generate_reality_config "$PORT" "$UUID" "$PRIKEY" "$SHORTID" "$SNI"
 
     if [[ $HAS_IPV4 -eq 1 ]]; then
-        node_name_v4="${COUNTRY4_NAME}-${SERVER_SPECS}-Reality-v4-${vendor_code_final}"
+        # Modified node name: Removed -${SERVER_SPECS}
+        node_name_v4="${COUNTRY4_NAME}-${vendor_code_final}-Reality-v4"
         SHARE_LINKS+="$(gen_share_link "$UUID" "$IPV4" "$PORT" "$PBK" "$SNI" "$SHORTID" "$node_name_v4")\n"
     fi
     if [[ $HAS_IPV6 -eq 1 ]]; then
-        node_name_v6="${COUNTRY6_NAME}-${SERVER_SPECS}-Reality-v6-${vendor_code_final}" 
+        # Modified node name: Removed -${SERVER_SPECS}
+        # Ensure COUNTRY6_NAME is not "未知" before appending, or handle it.
+        local country6_display_name=${COUNTRY6_NAME}
+        if [[ "$country6_display_name" == "未知" && "$COUNTRY4_NAME" != "未知" ]]; then
+            country6_display_name=${COUNTRY4_NAME} # Use IPv4 country if IPv6 country is unknown but v4 is known
+        elif [[ "$country6_display_name" == "未知" ]]; then
+            country6_display_name="IPv6Node" # Fallback if both are unknown
+        fi
+        node_name_v6="${country6_display_name}-${vendor_code_final}-Reality-v6"
         SHARE_LINKS+="$(gen_share_link "$UUID" "[$IPV6]" "$PORT" "$PBK" "$SNI" "$SHORTID" "$node_name_v6")\n"
     fi
-    SHARE_LINKS=$(echo -e "$SHARE_LINKS" | sed '/^$/d') 
+    SHARE_LINKS=$(echo -e "$SHARE_LINKS" | sed '/^$/d')
 
     echo "节点信息配置完成。"
     install_systemd_service
+    configure_firewall "$PORT" # Call firewall configuration
 
     echo "正在启动 sing-box 服务..."
-    if [[ "$OS_RELEASE" == "alpine" ]]; then 
+    if [[ "$OS_RELEASE" == "alpine" ]]; then
         if service sing-box restart; then echo "sing-box 服务 (Alpine) 已尝试重启。"; else echo "错误：尝试重启 sing-box 服务 (Alpine) 失败。"; fi
-    else 
+    else
         if systemctl restart sing-box; then echo "sing-box 服务 (systemd) 已尝试重启。"; else echo "错误：尝试重启 sing-box 服务 (systemd) 失败。"; fi
     fi
-    
-    sleep 3 
+
+    sleep 3
     echo "检查 sing-box 服务状态..."
     if [[ "$OS_RELEASE" != "alpine" ]]; then
         if systemctl is-active --quiet sing-box; then echo "sing-box 服务正在运行。"
@@ -507,4 +569,3 @@ main() {
 
 # ---- 执行主函数 ----
 main
-
