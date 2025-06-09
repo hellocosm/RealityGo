@@ -223,12 +223,11 @@ get_vendor_code() {
 
 # 系统检测
 os_check() {
-#    if [[ -f /etc/redhat-release ]]; then OS_RELEASE="centos"
-#    elif grep -Eqi "debian" /etc/issue /proc/version 2>/dev/null; then OS_RELEASE="debian"
-#    elif grep -Eqi "ubuntu" /etc/issue /proc/version 2>/dev/null; then OS_RELEASE="ubuntu"
-#    elif grep -Eqi "alpine" /etc/issue 2>/dev/null; then OS_RELEASE="alpine"
-#    else echo "不支持的系统" && exit 1; fi
-OS_RELEASE="alpine"
+    if [[ -f /etc/redhat-release ]]; then OS_RELEASE="alpine"
+    elif grep -Eqi "debian" /etc/issue /proc/version 2>/dev/null; then OS_RELEASE="alpine"
+    elif grep -Eqi "ubuntu" /etc/issue /proc/version 2>/dev/null; then OS_RELEASE="alpine"
+    elif grep -Eqi "alpine" /etc/issue 2>/dev/null; then OS_RELEASE="alpine"
+    else echo "不支持的系统" && exit 1; fi
 }
 
 # 架构检测
