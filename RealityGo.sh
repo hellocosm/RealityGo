@@ -5,7 +5,7 @@ SERVICE_FILE_PATH='/etc/systemd/system/sing-box.service'
 SHARE_LINKS=""
 # 设置 sing-box 的监听端口。
 PORT=443
-SNI="www.ilsole24ore.com" # 你可以根据需要更改SNI
+SNI="assets.msn.com" # 你可以根据需要更改SNI
 
 # 全局变量存储IP信息, 国家/地区, 运营商, 服务器配置
 IPV4=""
